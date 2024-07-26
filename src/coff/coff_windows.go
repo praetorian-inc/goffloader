@@ -322,8 +322,6 @@ func LoadWithMethod(coffBytes []byte, argBytes []byte, method string) (string, e
 		bofOutput += msg.(string) + "\n"
 	}
 	return bofOutput, nil
-
-	return "", fmt.Errorf("could not find default start methods of main or go")
 }
 
 func invokeMethod(methodName string, argBytes []byte, parsedCoff *pecoff.File, sectionMap map[string]CoffSection, outChannel chan<- interface{}) {

@@ -52,13 +52,13 @@ func RunExecutable(executableBytes []byte, args []string) (string, error) {
 		"z",                                  // Invoke default entry point method
 		"i0",                                 // not using unicode
 		"i0",                                 // we don't want to disable output
-		"i0",                                 // we don't want to allocate a console
+		"i1",                                 // allocating a console so we can capture output
 		"i0",                                 // don't need to worry about closing handles
 		"i0",                                 // don't need to worry about freeing libraries
 		"i1",                                 // don't need to worry about saving
 		"i0",                                 // not listing PEs
 		"z",                                  // not unloading any PEs
-		"z" + "chariot",                      // setting chariot as our nick() for now
+		"z",                                  // no need for us to have anything as our nick() for now
 		"z" + "0",                            // timestamp doesn't matter
 		"i0",                                 // linking to PEB
 		"i0",                                 // unloading is fine
