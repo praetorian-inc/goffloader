@@ -26,8 +26,8 @@ Given that there's already a number of very excellent C implementations of this 
 
 1. Adding BOF loading to Go expands the number of open source security projects that can be used within Go security tooling. There are [entire](https://github.com/trustedsec/CS-Situational-Awareness-BOF) [repositories](https://github.com/trustedsec/CS-Remote-OPs-BOF) of useful functionality that are now accessible for Go tools via this library.
 2. While you can technically just use a C implementation of COFF loaders ([Sliver does this](https://github.com/sliverarmory/COFFLoader), for example), CGO is annoying.
-3. Go is a nice language for static signature evasion. You can see [an example of us being able to run an embedded version of mimikatz](https://github.com/praetorian-inc/chariot-bas/blob/main/tests/1e247e041d7f404cbfba1a4c67d62aa4.go) without jumping through too many hoops.
-4. Our [open-source breach & attack simulation](https://github.com/praetorian-inc/chariot-bas) tests are written in Go...and we wanted this functionality.
+3. Go is a nice language for static signature evasion. You can see [an example of us being able to run an embedded version of mimikatz](https://github.com/praetorian-inc/chariot-client/blob/main/cmd/bas/1e247e041d7f404cbfba1a4c67d62aa4.go) without jumping through too many hoops.
+4. Our [open-source breach & attack simulation](https://github.com/praetorian-inc/chariot-client?tab=readme-ov-file#bas) tests are written in Go...and we wanted this functionality.
 
 # Limitations
 
