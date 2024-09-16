@@ -66,6 +66,7 @@ func RunExecutable(executableBytes []byte, args []string) (string, error) {
 		"z",                                  // load_all_deps_but DLL_A,DLL_B,DLL_C...
 		"z",                                  // not using load_deps
 		"z",                                  // not using search_paths
+		"i1",                                 // running with -inthread
 	})
 	if err != nil {
 		return "", fmt.Errorf("Failed to pack arguments: %s\n", err.Error())
