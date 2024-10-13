@@ -3,10 +3,12 @@ package coff
 import (
 	_ "embed"
 	"fmt"
-	"github.com/praetorian-inc/goffloader/src/lighthouse"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/praetorian-inc/goffloader/src/lighthouse"
 
 	"github.com/RIscRIpt/pecoff"
 	"github.com/RIscRIpt/pecoff/binutil"
@@ -326,6 +328,15 @@ func LoadWithMethod(coffBytes []byte, argBytes []byte, method string) (string, e
 
 func invokeMethod(methodName string, argBytes []byte, parsedCoff *pecoff.File, sectionMap map[string]CoffSection, outChannel chan<- interface{}) {
 	defer close(outChannel)
+
+	// Catch unexpected panics and propagate them to the output channel
+	// This prevents the host program from terminating unexpectedly
+	defer func() {
+		if r := recover(); r != nil {
+			errorMsg := fmt.Sprintf("Panic occurred when executing COFF: %v\n%s", r, debug.Stack())
+			outChannel <- errorMsg
+		}
+	}()
 
 	// Call the entry point
 	for _, symbol := range parsedCoff.Symbols {
