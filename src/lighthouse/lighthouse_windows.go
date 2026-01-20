@@ -13,12 +13,15 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/praetorian-inc/goffloader/src/memory"
-	"golang.org/x/sys/windows"
+	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf16"
 	"unsafe"
+
+	"github.com/praetorian-inc/goffloader/src/memory"
+	"golang.org/x/sys/windows"
 )
 
 func GetCoffOutputForChannel(channel chan<- interface{}) func(int, uintptr, int) uintptr {
@@ -33,54 +36,209 @@ func GetCoffOutputForChannel(channel chan<- interface{}) func(int, uintptr, int)
 	}
 }
 
-func GetCoffPrintfForChannel(channel chan<- interface{}) func(int, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr {
-	return func(beaconType int, data uintptr, arg0 uintptr, arg1 uintptr, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uintptr, arg6 uintptr, arg7 uintptr, arg8 uintptr, arg9 uintptr) uintptr {
-		var out string
-		out = memory.ReadCStringFromPtr(data)
-		numArgs := strings.Count(out, "%")
-		args := []uintptr{arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9}
+type formatBuffer struct {
+	original uintptr
+	buffer   uintptr
+	length   int32
+	size     int32
+}
 
-		fString := ""
-		argOffset := 0
-		skipChar := false
-		for i := range len(out) {
-			c := out[i]
+var (
+	formatBuffers   = make(map[uintptr][]byte)
+	formatBuffersMu sync.Mutex
+)
 
-			if skipChar {
-				skipChar = false
-				continue
+func isLikelyWideString(ptr uintptr) bool {
+	if ptr == 0 {
+		return false
+	}
+	sample := memory.ReadBytesFromPtr(ptr, 8)
+	if len(sample) < 2 {
+		return false
+	}
+	zeros := 0
+	nonZeros := 0
+	for i := 0; i+1 < len(sample); i += 2 {
+		if sample[i] == 0 && sample[i+1] == 0 {
+			break
+		}
+		if sample[i+1] == 0 {
+			zeros++
+		} else {
+			nonZeros++
+		}
+	}
+	return zeros > 0 && nonZeros == 0
+}
+
+func readCString(ptr uintptr, preferWide bool) string {
+	if ptr == 0 {
+		return ""
+	}
+	if preferWide || isLikelyWideString(ptr) {
+		return memory.ReadWStringFromPtr(ptr)
+	}
+	return memory.ReadCStringFromPtr(ptr)
+}
+
+func formatPrintf(format string, args []uintptr) string {
+	var builder strings.Builder
+	argIndex := 0
+	i := 0
+	for i < len(format) {
+		if format[i] != '%' {
+			builder.WriteByte(format[i])
+			i++
+			continue
+		}
+		if i+1 < len(format) && format[i+1] == '%' {
+			builder.WriteByte('%')
+			i += 2
+			continue
+		}
+
+		start := i
+		i++
+
+		flags := ""
+		for i < len(format) && strings.ContainsRune("+-#0 ", rune(format[i])) {
+			flags += string(format[i])
+			i++
+		}
+
+		width := ""
+		widthFromArg := false
+		widthValue := 0
+		if i < len(format) && format[i] == '*' {
+			widthFromArg = true
+			if argIndex < len(args) {
+				widthValue = int(args[argIndex])
+				argIndex++
 			}
-
-			if argOffset > numArgs {
-				fString += string(c)
-				continue
-			}
-
-			if c == '%' && i < len(out)-1 {
-				d := out[i+1]
-				switch d {
-				case 's':
-					s := memory.ReadCStringFromPtr(args[argOffset])
-					// no way to tell if the string is unicode or ansi formatted, so assume if we read
-					// more than 4 characters without a null byte that it's ANSI
-					if len(s) < 5 {
-						s = memory.ReadWStringFromPtr(args[argOffset])
-					}
-					fString += s
-				case 'p':
-					fString += fmt.Sprintf("%x", unsafe.Pointer(args[argOffset]))
-				default:
-					fString += fmt.Sprintf("%"+string(d), args[argOffset])
-				}
-				argOffset++
-				skipChar = true
-			} else {
-				fString += string(c)
+			i++
+		} else {
+			for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+				width += string(format[i])
+				i++
 			}
 		}
 
-		//fmt.Printf("%s\n", fString) //uncomment for debugging failed BOF/Executable runs
-		channel <- fString
+		precision := ""
+		precisionFromArg := false
+		precisionValue := 0
+		if i < len(format) && format[i] == '.' {
+			precision = "."
+			i++
+			if i < len(format) && format[i] == '*' {
+				precisionFromArg = true
+				if argIndex < len(args) {
+					precisionValue = int(args[argIndex])
+					argIndex++
+				}
+				i++
+			} else {
+				for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+					precision += string(format[i])
+					i++
+				}
+			}
+		}
+
+		length := ""
+		switch {
+		case i+2 < len(format) && format[i:i+3] == "I64":
+			length = "I64"
+			i += 3
+		case i+1 < len(format) && format[i:i+2] == "ll":
+			length = "ll"
+			i += 2
+		case i+1 < len(format) && format[i:i+2] == "hh":
+			length = "hh"
+			i += 2
+		case i < len(format) && strings.ContainsRune("lhjztwL", rune(format[i])):
+			length = string(format[i])
+			i++
+		}
+
+		if i >= len(format) {
+			builder.WriteString(format[start:])
+			break
+		}
+
+		spec := format[i]
+		i++
+
+		if widthFromArg {
+			if widthValue < 0 {
+				if !strings.Contains(flags, "-") {
+					flags += "-"
+				}
+				widthValue = -widthValue
+			}
+			width = strconv.Itoa(widthValue)
+		}
+		if precisionFromArg {
+			if precisionValue >= 0 {
+				precision = "." + strconv.Itoa(precisionValue)
+			} else {
+				precision = ""
+			}
+		}
+
+		if argIndex >= len(args) {
+			builder.WriteString(format[start:i])
+			continue
+		}
+
+		switch spec {
+		case 's':
+			preferWide := length == "l" || length == "w" || length == "L"
+			value := readCString(args[argIndex], preferWide)
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+"s", value))
+		case 'S':
+			value := readCString(args[argIndex], true)
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+"s", value))
+		case 'c', 'C':
+			value := rune(args[argIndex])
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+"c", value))
+		case 'p':
+			value := unsafe.Pointer(args[argIndex])
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+"p", value))
+		case 'd', 'i':
+			value := int64(args[argIndex])
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+"d", value))
+		case 'u':
+			value := uint64(args[argIndex])
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+"d", value))
+		case 'x', 'X', 'o':
+			value := uint64(args[argIndex])
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+string(spec), value))
+		case 'f', 'F', 'e', 'E', 'g', 'G':
+			value := math.Float64frombits(uint64(args[argIndex]))
+			argIndex++
+			builder.WriteString(fmt.Sprintf("%"+flags+width+precision+string(spec), value))
+		default:
+			builder.WriteString(format[start:i])
+		}
+	}
+
+	return builder.String()
+}
+
+func GetCoffPrintfForChannel(channel chan<- interface{}) func(int, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr {
+	return func(beaconType int, data uintptr, arg0 uintptr, arg1 uintptr, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uintptr, arg6 uintptr, arg7 uintptr, arg8 uintptr, arg9 uintptr) uintptr {
+		out := memory.ReadCStringFromPtr(data)
+		args := []uintptr{arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9}
+		formatted := formatPrintf(out, args)
+		//fmt.Printf("%s\n", formatted) //uncomment for debugging failed BOF/Executable runs
+		channel <- formatted
 		return 0
 	}
 }
@@ -171,6 +329,152 @@ func RemoveValue(key uintptr) uintptr {
 		return uintptr(1)
 	}
 	return uintptr(0)
+}
+
+func swapEndianness(indata uint32) uint32 {
+	return (indata>>24)&0x000000ff |
+		(indata>>8)&0x0000ff00 |
+		(indata<<8)&0x00ff0000 |
+		(indata<<24)&0xff000000
+}
+
+func getFormatBuffer(format *formatBuffer) ([]byte, bool) {
+	if format == nil {
+		return nil, false
+	}
+	formatPtr := uintptr(unsafe.Pointer(format))
+	formatBuffersMu.Lock()
+	buf, ok := formatBuffers[formatPtr]
+	formatBuffersMu.Unlock()
+	return buf, ok
+}
+
+func appendToFormatBuffer(format *formatBuffer, data []byte) uintptr {
+	if format == nil {
+		return 0
+	}
+	buf, ok := getFormatBuffer(format)
+	if !ok {
+		return 0
+	}
+	if format.size <= 0 {
+		return 0
+	}
+	used := int(format.buffer - format.original)
+	if used < 0 || used > len(buf) {
+		return 0
+	}
+	if used+len(data) > len(buf) {
+		return 0
+	}
+	copy(buf[used:], data)
+	used += len(data)
+	format.buffer = format.original + uintptr(used)
+	format.length = int32(used)
+	return 1
+}
+
+func BeaconFormatAlloc(format *formatBuffer, maxsz int32) uintptr {
+	if format == nil || maxsz <= 0 {
+		return 0
+	}
+	buf := make([]byte, maxsz)
+	format.original = uintptr(unsafe.Pointer(&buf[0]))
+	format.buffer = format.original
+	format.length = 0
+	format.size = maxsz
+
+	formatPtr := uintptr(unsafe.Pointer(format))
+	formatBuffersMu.Lock()
+	formatBuffers[formatPtr] = buf
+	formatBuffersMu.Unlock()
+	return 1
+}
+
+func BeaconFormatReset(format *formatBuffer) uintptr {
+	if format == nil {
+		return 0
+	}
+	buf, ok := getFormatBuffer(format)
+	if !ok {
+		return 0
+	}
+	for i := range buf {
+		buf[i] = 0
+	}
+	format.buffer = format.original
+	format.length = 0
+	return 1
+}
+
+func BeaconFormatFree(format *formatBuffer) uintptr {
+	if format == nil {
+		return 0
+	}
+	formatPtr := uintptr(unsafe.Pointer(format))
+	formatBuffersMu.Lock()
+	delete(formatBuffers, formatPtr)
+	formatBuffersMu.Unlock()
+
+	format.original = 0
+	format.buffer = 0
+	format.length = 0
+	format.size = 0
+	return 1
+}
+
+func BeaconFormatAppend(format *formatBuffer, text uintptr, length int32) uintptr {
+	if format == nil || text == 0 || length <= 0 {
+		return 0
+	}
+	data := memory.ReadBytesFromPtr(text, uint32(length))
+	return appendToFormatBuffer(format, data)
+}
+
+func BeaconFormatPrintf(format *formatBuffer, fmtPtr uintptr, arg0 uintptr, arg1 uintptr, arg2 uintptr, arg3 uintptr, arg4 uintptr, arg5 uintptr, arg6 uintptr, arg7 uintptr, arg8 uintptr, arg9 uintptr) uintptr {
+	if format == nil || fmtPtr == 0 {
+		return 0
+	}
+	fmtString := memory.ReadCStringFromPtr(fmtPtr)
+	args := []uintptr{arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9}
+	formatted := formatPrintf(fmtString, args)
+	return appendToFormatBuffer(format, []byte(formatted))
+}
+
+func BeaconFormatToString(format *formatBuffer, size *int32) uintptr {
+	if format == nil {
+		return 0
+	}
+	if size != nil {
+		*size = format.length
+	}
+	return format.original
+}
+
+func BeaconFormatInt(format *formatBuffer, value int32) uintptr {
+	if format == nil {
+		return 0
+	}
+	buf, ok := getFormatBuffer(format)
+	if !ok {
+		return 0
+	}
+	if format.size <= 0 {
+		return 0
+	}
+	used := int(format.buffer - format.original)
+	if used < 0 || used > len(buf) {
+		return 0
+	}
+	if used+4 > len(buf) {
+		return 0
+	}
+	swapped := swapEndianness(uint32(value))
+	binary.LittleEndian.PutUint32(buf[used:used+4], swapped)
+	used += 4
+	format.buffer = format.original + uintptr(used)
+	format.length = int32(used)
+	return 1
 }
 
 func PackArgs(data []string) ([]byte, error) {
