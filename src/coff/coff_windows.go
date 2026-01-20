@@ -86,17 +86,19 @@ func resolveExternalAddress(symbolName string, outChannel chan<- interface{}) ui
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'R', 'e', 'm', 'o', 'v', 'e', 'V', 'a', 'l', 'u', 'e'}):
 				return windows.NewCallback(lighthouse.RemoveValue)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'A', 'l', 'l', 'o', 'c'}):
-				fallthrough
+				return windows.NewCallback(lighthouse.BeaconFormatAlloc)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'R', 'e', 's', 'e', 't'}):
-				fallthrough
+				return windows.NewCallback(lighthouse.BeaconFormatReset)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'F', 'r', 'e', 'e'}):
-				fallthrough
+				return windows.NewCallback(lighthouse.BeaconFormatFree)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'A', 'p', 'p', 'e', 'n', 'd'}):
-				fallthrough
+				return windows.NewCallback(lighthouse.BeaconFormatAppend)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'P', 'r', 'i', 'n', 't', 'f'}):
-				fallthrough
+				return windows.NewCallback(lighthouse.BeaconFormatPrintf)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'T', 'o', 'S', 't', 'r', 'i', 'n', 'g'}):
-				fallthrough
+				return windows.NewCallback(lighthouse.BeaconFormatToString)
+			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'I', 'n', 't'}):
+				return windows.NewCallback(lighthouse.BeaconFormatInt)
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'U', 's', 'e', 'T', 'o', 'k', 'e', 'n'}):
 				fallthrough
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'R', 'e', 'v', 'e', 'r', 't', 'T', 'o', 'k', 'e', 'n'}):
@@ -116,8 +118,6 @@ func resolveExternalAddress(symbolName string, outChannel chan<- interface{}) ui
 			case string([]rune{'t', 'o', 'W', 'i', 'd', 'e', 'C', 'h', 'a', 'r'}):
 				fallthrough
 			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'G', 'e', 't', 'O', 'u', 't', 'p', 'u', 't', 'D', 'a', 't', 'a'}):
-				fallthrough
-			case string([]rune{'B', 'e', 'a', 'c', 'o', 'n', 'F', 'o', 'r', 'm', 'a', 't', 'I', 'n', 't'}):
 				fallthrough
 			default:
 				// TODO: Check directives here for libraries

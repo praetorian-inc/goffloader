@@ -1,6 +1,9 @@
 package memory
 
-import "unsafe"
+import (
+	"unicode/utf16"
+	"unsafe"
+)
 
 func CopyMemory(dst, src uintptr, length uint32) {
 	copy((*[1 << 30]byte)(unsafe.Pointer(dst))[:length], (*[1 << 30]byte)(unsafe.Pointer(src))[:length])
@@ -41,16 +44,15 @@ func ReadWStringFromPtr(src uintptr) string {
 	if src == 0 {
 		return ""
 	}
-	str := ""
-	offset := 0
+	var codeUnits []uint16
+	offset := uintptr(0)
 	for {
-		c1 := *(*byte)(unsafe.Pointer(src + uintptr(offset)))
-		c2 := *(*byte)(unsafe.Pointer(src + uintptr(offset+1)))
-		if c1 == 0 && c2 == 0 {
+		c := *(*uint16)(unsafe.Pointer(src + offset))
+		if c == 0 {
 			break
 		}
-		str += string(c1) + string(c2)
+		codeUnits = append(codeUnits, c)
 		offset += 2
 	}
-	return str
+	return string(utf16.Decode(codeUnits))
 }
