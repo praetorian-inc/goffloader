@@ -1,0 +1,4 @@
+github.com/RIscRIpt/pecoff v0.0.0-20200923152459-a332238caa87 h1:QJKfqX8iCuRT9HZoQGU7cUjnTjKJrypSCghfmAX2vW0=
+github.com/RIscRIpt/pecoff v0.0.0-20200923152459-a332238caa87/go.mod h1:fA0yvj8xMccdfkCwUABhuLZTrRXgyvg3b1k/B/EqHu4=
+golang.org/x/sys v0.22.0 h1:RI27ohtqKCnwULzJLqkv897zojh5/DwS/ENaMzUOaWI=
+golang.org/x/sys v0.22.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
