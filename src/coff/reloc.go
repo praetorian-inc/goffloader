@@ -1,4 +1,4 @@
-//go:build !wasip1
+//go:build windows || wasip1
 
 package coff
 
@@ -22,22 +22,24 @@ func processRelocation(symbolDefAddress uintptr, sectionAddress uintptr, reloc w
 		symbolDefAddress += (uintptr)(segmentValue)
 	}
 
-	symbolRefAddress := sectionAddress
+	hostSection := resolveHostAddr(sectionAddress)
+	hostAbsolute := symbolOffset + hostSection
+	hostDef := resolveHostAddr(symbolDefAddress)
 
 	switch reloc.Type {
 	case windef.IMAGE_REL_AMD64_ADDR64:
 		addr := (*uint64)(unsafe.Pointer(absoluteSymbolAddress))
 		fmt.Sprintf("Symbol Ref Address: 0x%x\n", addr)
-		*addr = uint64(symbolDefAddress)
+		*addr = uint64(hostDef)
 	case windef.IMAGE_REL_AMD64_ADDR32NB:
 		addr := (*uint32)(unsafe.Pointer(absoluteSymbolAddress))
-		valueToWrite := symbolDefAddress - (symbolRefAddress + 4 + symbolOffset)
+		valueToWrite := hostDef - (hostSection + 4 + symbolOffset)
 		fmt.Sprintf("Symbol Ref Address: 0x%x\n", addr)
 		*addr = uint32(valueToWrite)
 	case windef.IMAGE_REL_AMD64_REL32, windef.IMAGE_REL_AMD64_REL32_1,
 		windef.IMAGE_REL_AMD64_REL32_2, windef.IMAGE_REL_AMD64_REL32_3,
 		windef.IMAGE_REL_AMD64_REL32_4, windef.IMAGE_REL_AMD64_REL32_5:
-		relativeSymbolDefAddress := symbolDefAddress - (uintptr)(reloc.Type-4) - (absoluteSymbolAddress + 4)
+		relativeSymbolDefAddress := hostDef - (uintptr)(reloc.Type-4) - (hostAbsolute + 4)
 		addr := (*uint32)(unsafe.Pointer(absoluteSymbolAddress))
 		fmt.Sprintf("Symbol Ref Address: 0x%x\n", addr)
 		*addr = uint32(relativeSymbolDefAddress)
