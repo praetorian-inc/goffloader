@@ -1,3 +1,5 @@
+//go:build windows || wasip1
+
 package memory
 
 import "unsafe"

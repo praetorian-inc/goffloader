@@ -1,3 +1,5 @@
+//go:build windows || wasip1
+
 /*
 	Our Beacon* Function Compatibilty implementations. Code here is taken very liberally
     from Ne0nd0g's go-coff project at https://github.com/Ne0nd0g/go-coff.
