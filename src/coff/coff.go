@@ -183,6 +183,10 @@ func LoadWithMethod(coffBytes []byte, argBytes []byte, method string) (string, e
 	bssOffset := 0
 	bssSize := uint32(0)
 
+	defer func() {
+		freeShadowAllocations(sections, gotBaseAddress)
+	}()
+
 	for _, symbol := range parsedCoff.Symbols {
 		if isSpecialSymbol(symbol) {
 			if isImportSymbol(symbol) {
@@ -288,7 +292,6 @@ func LoadWithMethod(coffBytes []byte, argBytes []byte, method string) (string, e
 	for msg := range output {
 		bofOutput += msg.(string) + "\n"
 	}
-	freeShadowAllocations(sections, gotBaseAddress)
 	return bofOutput, nil
 }
 
